@@ -450,13 +450,6 @@ const Index = () => {
 
       <div className="border-t border-border bg-card px-4 py-3">
         <div className="flex items-end gap-2">
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Сообщение..."
-            className="flex-1"
-          />
           <Button
             variant="ghost"
             size="icon"
@@ -475,6 +468,13 @@ const Index = () => {
           <Button onClick={handleSend} size="icon" className="shrink-0">
             <Icon name="Send" size={20} />
           </Button>
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Сообщение..."
+            className="flex-1"
+          />
         </div>
       </div>
     </div>
