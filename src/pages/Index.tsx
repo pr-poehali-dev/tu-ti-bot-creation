@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
@@ -15,20 +16,21 @@ interface Message {
   image?: string;
 }
 
+interface Chat {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: Date;
+}
+
 interface BotSettings {
   name: string;
   avatar: string;
 }
 
 const Index = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: 'Привет! Я TuTiBot. Чем могу помочь?',
-      sender: 'bot',
-      timestamp: new Date(),
-    },
-  ]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string>('');
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [botSettings, setBotSettings] = useState<BotSettings>({
@@ -39,6 +41,80 @@ const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const savedChats = localStorage.getItem('tutibot_chats');
+    const savedSettings = localStorage.getItem('tutibot_settings');
+    const savedCurrentChat = localStorage.getItem('tutibot_current_chat');
+
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings);
+      setBotSettings(settings);
+      setTempSettings(settings);
+    }
+
+    if (savedChats) {
+      const parsedChats = JSON.parse(savedChats).map((chat: any) => ({
+        ...chat,
+        createdAt: new Date(chat.createdAt),
+        messages: chat.messages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        })),
+      }));
+      setChats(parsedChats);
+
+      if (savedCurrentChat && parsedChats.find((c: Chat) => c.id === savedCurrentChat)) {
+        setCurrentChatId(savedCurrentChat);
+      } else if (parsedChats.length > 0) {
+        setCurrentChatId(parsedChats[0].id);
+      } else {
+        createNewChat(parsedChats, botSettings.name);
+      }
+    } else {
+      createNewChat([], botSettings.name);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (chats.length > 0) {
+      localStorage.setItem('tutibot_chats', JSON.stringify(chats));
+    }
+  }, [chats]);
+
+  useEffect(() => {
+    if (currentChatId) {
+      localStorage.setItem('tutibot_current_chat', currentChatId);
+    }
+  }, [currentChatId]);
+
+  useEffect(() => {
+    localStorage.setItem('tutibot_settings', JSON.stringify(botSettings));
+  }, [botSettings]);
+
+  const createNewChat = (existingChats: Chat[], botName: string) => {
+    const newChat: Chat = {
+      id: Date.now().toString(),
+      title: `Чат ${existingChats.length + 1}`,
+      messages: [
+        {
+          id: '1',
+          text: `Привет! Я ${botName}. Чем могу помочь?`,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ],
+      createdAt: new Date(),
+    };
+
+    const updatedChats = [newChat, ...existingChats];
+    setChats(updatedChats);
+    setCurrentChatId(newChat.id);
+    return updatedChats;
+  };
+
+  const currentChat = chats.find((chat) => chat.id === currentChatId);
+  const messages = currentChat?.messages || [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,7 +131,14 @@ const Index = () => {
       image,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setChats((prevChats) =>
+      prevChats.map((chat) =>
+        chat.id === currentChatId
+          ? { ...chat, messages: [...chat.messages, userMessage] }
+          : chat
+      )
+    );
+
     setInputValue('');
     setIsLoading(true);
 
@@ -81,7 +164,15 @@ const Index = () => {
         sender: 'bot',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, botResponse]);
+
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
+          chat.id === currentChatId
+            ? { ...chat, messages: [...chat.messages, botResponse] }
+            : chat
+        )
+      );
+
       setIsLoading(false);
       setTimeout(scrollToBottom, 100);
     } catch (error) {
@@ -91,7 +182,15 @@ const Index = () => {
         sender: 'bot',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
+          chat.id === currentChatId
+            ? { ...chat, messages: [...chat.messages, errorMessage] }
+            : chat
+        )
+      );
+
       setIsLoading(false);
     }
   };
@@ -138,26 +237,95 @@ const Index = () => {
   };
 
   const resetChat = () => {
-    setMessages([
-      {
-        id: '1',
-        text: `Привет! Я ${botSettings.name}. Чем могу помочь?`,
-        sender: 'bot',
-        timestamp: new Date(),
-      },
-    ]);
+    setChats((prevChats) =>
+      prevChats.map((chat) =>
+        chat.id === currentChatId
+          ? {
+              ...chat,
+              messages: [
+                {
+                  id: '1',
+                  text: `Привет! Я ${botSettings.name}. Чем могу помочь?`,
+                  sender: 'bot',
+                  timestamp: new Date(),
+                },
+              ],
+            }
+          : chat
+      )
+    );
     toast.success('Чат перезапущен');
   };
 
   const newChat = () => {
-    setMessages([]);
+    createNewChat(chats, botSettings.name);
     toast.success('Новый чат создан');
+  };
+
+  const switchChat = (chatId: string) => {
+    setCurrentChatId(chatId);
+  };
+
+  const deleteChat = (chatId: string) => {
+    const updatedChats = chats.filter((chat) => chat.id !== chatId);
+    setChats(updatedChats);
+
+    if (currentChatId === chatId) {
+      if (updatedChats.length > 0) {
+        setCurrentChatId(updatedChats[0].id);
+      } else {
+        createNewChat([], botSettings.name);
+      }
+    }
+
+    toast.success('Чат удалён');
   };
 
   return (
     <div className="h-screen flex flex-col bg-background">
       <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Icon name="Menu" size={20} />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left">
+              <SheetHeader>
+                <SheetTitle>История чатов</SheetTitle>
+              </SheetHeader>
+              <div className="mt-4 space-y-2">
+                {chats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer hover:bg-accent ${
+                      chat.id === currentChatId ? 'bg-accent' : ''
+                    }`}
+                    onClick={() => switchChat(chat.id)}
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{chat.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {chat.messages.length} сообщений
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteChat(chat.id);
+                      }}
+                    >
+                      <Icon name="Trash2" size={16} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </SheetContent>
+          </Sheet>
+
           <Avatar className="h-10 w-10">
             <AvatarImage src={botSettings.avatar} />
             <AvatarFallback className="bg-primary text-primary-foreground">
@@ -282,6 +450,13 @@ const Index = () => {
 
       <div className="border-t border-border bg-card px-4 py-3">
         <div className="flex items-end gap-2">
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Сообщение..."
+            className="flex-1"
+          />
           <Button
             variant="ghost"
             size="icon"
@@ -296,13 +471,6 @@ const Index = () => {
             accept="image/*"
             className="hidden"
             onChange={handleImageUpload}
-          />
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Сообщение..."
-            className="flex-1"
           />
           <Button onClick={handleSend} size="icon" className="shrink-0">
             <Icon name="Send" size={20} />
